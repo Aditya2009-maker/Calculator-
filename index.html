@@ -1,78 +1,490 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<title>Calculator</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { min-height: 100vh; background: #0F0F1A; display: flex; align-items: center; justify-content: center; font-family: 'Courier New', monospace; }
-  .calc { background: #1A1A2E; border-radius: 24px; padding: 24px; width: 320px; box-shadow: 0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05); }
-  .display { background: #0F0F1A; border-radius: 14px; padding: 20px 20px 16px; margin-bottom: 20px; min-height: 96px; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; border: 1px solid rgba(255,255,255,0.06); }
-  .expression { color: #4A4A6A; font-size: 14px; margin-bottom: 6px; min-height: 18px; }
-  .value { color: #F0F0F0; font-size: 42px; font-weight: bold; text-shadow: 0 0 20px rgba(123,97,255,0.3); word-break: break-all; line-height: 1; }
-  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  button { border: none; border-radius: 12px; font-size: 18px; font-family: 'Courier New', monospace; font-weight: 600; height: 64px; cursor: pointer; transition: transform 0.08s; width: 100%; }
-  button:active { transform: scale(0.93); }
-  .digit { background: #2A2A3E; color: #F0F0F0; }
-  .utility { background: #2A2A3E; color: #A0A0C0; font-size: 15px; }
-  .operator { background: #E94560; color: #fff; box-shadow: 0 4px 15px rgba(233,69,96,0.3); }
-  .equals { background: linear-gradient(135deg,#7B61FF,#E94560); color: #fff; box-shadow: 0 4px 20px rgba(123,97,255,0.4); }
-  .zero { grid-column: span 2; background: #2A2A3E; color: #F0F0F0; text-align: left; padding-left: 22px; }
-</style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BigCalc — 50-Digit Precision</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/decimal.js/10.4.3/decimal.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #080B14;
+      font-family: 'Inter', sans-serif;
+      padding: 24px 16px;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(99,102,241,0.10) 0%, transparent 55%),
+        radial-gradient(ellipse at 75% 80%, rgba(0,212,255,0.07) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    /* ── top label ── */
+    .page-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      color: rgba(0,212,255,0.45);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    /* ── shell ── */
+    .calculator {
+      width: 370px;
+      background: #111827;
+      border-radius: 28px;
+      padding: 22px 20px 20px;
+      border: 1px solid rgba(99,102,241,0.18);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.04),
+        0 50px 100px rgba(0,0,0,0.7),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    /* ── header row ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .header-name {
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: rgba(255,255,255,0.25);
+    }
+    .prec-badge {
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(0,212,255,0.07);
+      border: 1px solid rgba(0,212,255,0.18);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 10px; font-weight: 700;
+      color: #00D4FF; letter-spacing: 0.05em;
+    }
+    .prec-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #00D4FF;
+      box-shadow: 0 0 6px #00D4FF;
+    }
+
+    /* ── display ── */
+    .display {
+      background: #0D1117;
+      border-radius: 16px;
+      padding: 14px 16px 12px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(99,102,241,0.10);
+      min-height: 148px;
+      display: flex; flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .disp-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .disp-expr {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; line-height: 1.5;
+      color: rgba(99,102,241,0.55);
+      flex: 1;
+      word-break: break-all;
+      min-height: 18px;
+    }
+
+    /* ── SIGNATURE ELEMENT: live digit counter ── */
+    .digit-badge {
+      display: flex; align-items: center; gap: 4px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      white-space: nowrap;
+      transition: all 0.25s ease;
+    }
+    .digit-badge .count {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; font-weight: 600;
+      color: rgba(255,255,255,0.3);
+      transition: color 0.25s;
+    }
+    .digit-badge .label {
+      font-size: 9px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.2);
+      transition: color 0.25s;
+    }
+    /* active state: ≥20 digits */
+    .digit-badge.big {
+      background: rgba(0,212,255,0.08);
+      border-color: rgba(0,212,255,0.25);
+      box-shadow: 0 0 10px rgba(0,212,255,0.1);
+    }
+    .digit-badge.big .count { color: #00D4FF; }
+    .digit-badge.big .label { color: rgba(0,212,255,0.6); }
+
+    .disp-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 36px; font-weight: 400; line-height: 1.2;
+      color: #EEF2FF;
+      text-align: right;
+      word-break: break-all;
+      text-shadow: 0 0 24px rgba(0,212,255,0.12);
+      transition: font-size 0.1s ease, color 0.2s;
+    }
+    .disp-value.md { font-size: 28px; }
+    .disp-value.sm { font-size: 21px; }
+    .disp-value.xs { font-size: 15px; letter-spacing: -0.02em; }
+    .disp-value.err { color: #EF4444; }
+
+    /* ── copy toast ── */
+    .copy-toast {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+      color: #00D4FF; text-align: right;
+      height: 14px; margin-top: 4px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .copy-toast.show { opacity: 1; }
+
+    /* ── button grid ── */
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 9px;
+    }
+
+    button {
+      height: 62px; border: none; border-radius: 14px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 16px; font-weight: 600;
+      transition: all 0.1s ease;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:active { transform: scale(0.92); }
+
+    .btn-num {
+      background: #1F2937; color: #E0E7FF;
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: 0 2px 0 #080B14;
+    }
+    .btn-num:hover { background: #263244; }
+
+    .btn-op {
+      background: #1A1F38; color: #818CF8;
+      border: 1px solid rgba(99,102,241,0.22);
+      box-shadow: 0 2px 0 #080B14;
+    }
+    .btn-op:hover { background: #1F2645; color: #A5B4FC; }
+
+    .btn-clear {
+      background: #2D1515; color: #F87171;
+      border: 1px solid rgba(239,68,68,0.18);
+      box-shadow: 0 2px 0 #080B14;
+    }
+    .btn-clear:hover { background: #3A1B1B; }
+
+    .btn-del {
+      background: #2C2510; color: #FBBF24;
+      border: 1px solid rgba(251,191,36,0.15);
+      box-shadow: 0 2px 0 #080B14;
+    }
+    .btn-del:hover { background: #3A3015; }
+
+    .btn-fn {
+      background: #181F2E; color: #7DD3FC;
+      border: 1px solid rgba(125,211,252,0.12);
+      box-shadow: 0 2px 0 #080B14;
+    }
+    .btn-fn:hover { background: #1E2840; }
+
+    .btn-eq {
+      background: linear-gradient(140deg, #6366F1 0%, #00C8F0 100%);
+      color: #fff; font-size: 20px;
+      border: none;
+      box-shadow: 0 2px 0 #080B14, 0 0 22px rgba(99,102,241,0.28);
+    }
+    .btn-eq:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 2px 0 #080B14, 0 0 32px rgba(99,102,241,0.45);
+    }
+
+    .span2 { grid-column: span 2; }
+
+    /* ── footer ── */
+    .footer {
+      margin-top: 12px;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(255,255,255,0.12);
+      text-align: center;
+    }
+
+    /* ── shake animation ── */
+    @keyframes shake {
+      0%,100%{transform:translateX(0)}
+      20%{transform:translateX(-5px)}
+      40%{transform:translateX(5px)}
+      60%{transform:translateX(-4px)}
+      80%{transform:translateX(4px)}
+    }
+    .shake { animation: shake 0.35s ease; }
+  </style>
 </head>
 <body>
-<div class="calc">
-  <div class="display">
-    <div class="expression" id="expr"></div>
-    <div class="value" id="val">0</div>
+
+<p class="page-label">Precision Big Number Calculator</p>
+
+<div class="calculator">
+
+  <!-- header -->
+  <div class="header">
+    <span class="header-name">BigCalc Pro</span>
+    <div class="prec-badge">
+      <span class="prec-dot"></span>
+      50-digit precision
+    </div>
   </div>
-  <div class="grid">
-    <button class="utility" onclick="clear_()">AC</button>
-    <button class="utility" onclick="toggleSign()">+/−</button>
-    <button class="utility" onclick="percent()">%</button>
-    <button class="operator" onclick="setOp('÷')">÷</button>
-    <button class="digit" onclick="digit(7)">7</button>
-    <button class="digit" onclick="digit(8)">8</button>
-    <button class="digit" onclick="digit(9)">9</button>
-    <button class="operator" onclick="setOp('×')">×</button>
-    <button class="digit" onclick="digit(4)">4</button>
-    <button class="digit" onclick="digit(5)">5</button>
-    <button class="digit" onclick="digit(6)">6</button>
-    <button class="operator" onclick="setOp('−')">−</button>
-    <button class="digit" onclick="digit(1)">1</button>
-    <button class="digit" onclick="digit(2)">2</button>
-    <button class="digit" onclick="digit(3)">3</button>
-    <button class="operator" onclick="setOp('+')">+</button>
-    <button class="zero" onclick="digit(0)">0</button>
-    <button class="digit" onclick="decimal()">.</button>
-    <button class="equals" onclick="equals()">=</button>
+
+  <!-- display -->
+  <div class="display" id="display">
+    <div class="disp-top">
+      <div class="disp-expr" id="exprLine">—</div>
+      <div class="digit-badge" id="digitBadge">
+        <span class="count" id="digitCount">1</span>
+        <span class="label">digits</span>
+      </div>
+    </div>
+    <div class="disp-value" id="mainVal">0</div>
+    <div class="copy-toast" id="copyToast">✓ Copied!</div>
+  </div>
+
+  <!-- buttons -->
+  <div class="btn-grid">
+
+    <!-- row 1 -->
+    <button class="btn-clear" onclick="clearAll()">AC</button>
+    <button class="btn-del"   onclick="delLast()">⌫</button>
+    <button class="btn-fn"    onclick="doPct()">%</button>
+    <button class="btn-op"    onclick="pressOp('/')">÷</button>
+
+    <!-- row 2 -->
+    <button class="btn-num" onclick="pressDigit('7')">7</button>
+    <button class="btn-num" onclick="pressDigit('8')">8</button>
+    <button class="btn-num" onclick="pressDigit('9')">9</button>
+    <button class="btn-op"  onclick="pressOp('*')">×</button>
+
+    <!-- row 3 -->
+    <button class="btn-num" onclick="pressDigit('4')">4</button>
+    <button class="btn-num" onclick="pressDigit('5')">5</button>
+    <button class="btn-num" onclick="pressDigit('6')">6</button>
+    <button class="btn-op"  onclick="pressOp('-')">−</button>
+
+    <!-- row 4 -->
+    <button class="btn-num" onclick="pressDigit('1')">1</button>
+    <button class="btn-num" onclick="pressDigit('2')">2</button>
+    <button class="btn-num" onclick="pressDigit('3')">3</button>
+    <button class="btn-op"  onclick="pressOp('+')">+</button>
+
+    <!-- row 5 -->
+    <button class="btn-num span2" onclick="pressDigit('0')">0</button>
+    <button class="btn-num" onclick="pressDot()">.</button>
+    <button class="btn-eq"  onclick="pressEquals()">=</button>
+
   </div>
 </div>
+
+<div class="footer">Tap result to copy · Keyboard supported</div>
+
 <script>
-  let display='0', expr='', prev=null, op=null, waiting=false;
-  const V=()=>document.getElementById('val');
-  const E=()=>document.getElementById('expr');
-  const update=()=>{ V().textContent=display; V().style.fontSize=display.length>9?'28px':'42px'; E().textContent=expr; }
-  function digit(d){ if(waiting){display=String(d);waiting=false;}else{display=display==='0'?String(d):display+d;} update(); }
-  function decimal(){ if(waiting){display='0.';waiting=false;}else if(!display.includes('.'))display+='.'; update(); }
-  function clear_(){ display='0';expr='';prev=null;op=null;waiting=false; update(); }
-  function toggleSign(){ display=String(parseFloat(display)*-1); update(); }
-  function percent(){ display=String(parseFloat(display)/100); update(); }
-  function calc(a,b,o){ if(o==='+')return a+b; if(o==='−')return a-b; if(o==='×')return a*b; if(o==='÷')return b?a/b:0; return b; }
-  function fmt(n){ return String(parseFloat(n.toPrecision(10))); }
-  function setOp(o){
-    const cur=parseFloat(display);
-    if(prev!==null&&!waiting){ const r=calc(prev,cur,op); display=fmt(r); prev=r; expr=display+' '+o; }
-    else{ prev=cur; expr=display+' '+o; }
-    op=o; waiting=true; update();
+  // ── Precision config ──────────────────────────────
+  Decimal.set({ precision: 50, rounding: Decimal.ROUND_HALF_UP });
+
+  // ── State ─────────────────────────────────────────
+  let cur      = '0';    // currently displayed string
+  let lhs      = null;   // Decimal: left operand
+  let pendingOp= null;   // '+' '-' '*' '/'
+  let freshCalc= false;  // just pressed =
+  let exprText = '—';    // top expression line
+
+  // ── DOM refs ──────────────────────────────────────
+  const mainEl   = document.getElementById('mainVal');
+  const exprEl   = document.getElementById('exprLine');
+  const badgeEl  = document.getElementById('digitBadge');
+  const countEl  = document.getElementById('digitCount');
+  const toastEl  = document.getElementById('copyToast');
+  const displayEl= document.getElementById('display');
+
+  // ── Render ────────────────────────────────────────
+  function render() {
+    mainEl.textContent = cur;
+
+    // Font size by length
+    mainEl.className = 'disp-value';
+    const l = cur.length;
+    if      (l > 32) mainEl.classList.add('xs');
+    else if (l > 22) mainEl.classList.add('sm');
+    else if (l > 14) mainEl.classList.add('md');
+
+    // Digit counter (digits only, no sign or dot)
+    const digits = cur.replace(/[^0-9]/g, '').length;
+    countEl.textContent = digits;
+    badgeEl.className = 'digit-badge' + (digits >= 20 ? ' big' : '');
+
+    // Expression line
+    exprEl.textContent = exprText;
   }
-  function equals(){
-    if(prev===null||op===null)return;
-    const cur=parseFloat(display), r=calc(prev,cur,op);
-    expr=prev+' '+op+' '+display+' =';
-    display=fmt(r); prev=null; op=null; waiting=true; update();
+
+  // ── Helpers ───────────────────────────────────────
+  const SYM = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+
+  function fmt(d) {
+    if (d.isInteger()) return d.toFixed(0);
+    let s = d.toFixed(45);
+    return s.replace(/\.?0+$/, '');
   }
+
+  function compute(a, b, op) {
+    if (op === '+') return a.plus(b);
+    if (op === '-') return a.minus(b);
+    if (op === '*') return a.times(b);
+    if (op === '/') {
+      if (b.isZero()) throw new Error('Cannot divide by 0');
+      return a.dividedBy(b);
+    }
+  }
+
+  function showError(msg) {
+    mainEl.className = 'disp-value err';
+    mainEl.textContent = msg;
+    cur = '0'; lhs = null; pendingOp = null; freshCalc = false; exprText = '—';
+    displayEl.classList.add('shake');
+    setTimeout(() => displayEl.classList.remove('shake'), 400);
+  }
+
+  // ── Input handlers ────────────────────────────────
+  function pressDigit(n) {
+    mainEl.classList.remove('err');
+    if (freshCalc) { cur = n; lhs = null; pendingOp = null; exprText = '—'; freshCalc = false; }
+    else {
+      const rawLen = cur.replace(/[^0-9]/g, '').length;
+      if (rawLen >= 40) return; // hard cap at 40 input digits
+      cur = (cur === '0') ? n : cur + n;
+    }
+    render();
+  }
+
+  function pressDot() {
+    mainEl.classList.remove('err');
+    if (freshCalc) { cur = '0.'; lhs = null; pendingOp = null; exprText = '—'; freshCalc = false; }
+    else if (!cur.includes('.')) cur += '.';
+    render();
+  }
+
+  function pressOp(op) {
+    mainEl.classList.remove('err');
+    try {
+      if (lhs !== null && pendingOp && !freshCalc) {
+        // chain: evaluate pending first
+        let result = compute(lhs, new Decimal(cur), pendingOp);
+        cur = fmt(result);
+        lhs = result;
+      } else {
+        lhs = new Decimal(cur);
+      }
+      pendingOp = op;
+      exprText  = fmt(lhs) + ' ' + SYM[op];
+      freshCalc = false;
+      cur       = '0';
+      render();
+    } catch(e) { showError(e.message); }
+  }
+
+  function pressEquals() {
+    if (!pendingOp || lhs === null) return;
+    try {
+      let b = new Decimal(cur);
+      let result = compute(lhs, b, pendingOp);
+      exprText = fmt(lhs) + ' ' + SYM[pendingOp] + ' ' + fmt(b) + ' =';
+      cur = fmt(result);
+      lhs = null; pendingOp = null; freshCalc = true;
+      mainEl.className = 'disp-value';
+      render();
+    } catch(e) { showError(e.message); }
+  }
+
+  function doPct() {
+    mainEl.classList.remove('err');
+    try {
+      let result = new Decimal(cur).dividedBy(100);
+      cur = fmt(result);
+      render();
+    } catch(e) {}
+  }
+
+  function delLast() {
+    mainEl.classList.remove('err');
+    if (freshCalc) { clearAll(); return; }
+    cur = cur.length > 1 ? cur.slice(0, -1) : '0';
+    if (cur === '-') cur = '0';
+    render();
+  }
+
+  function clearAll() {
+    cur = '0'; lhs = null; pendingOp = null; freshCalc = false; exprText = '—';
+    mainEl.className = 'disp-value';
+    render();
+  }
+
+  // ── Copy on tap/click ─────────────────────────────
+  let toastTimer = null;
+  mainEl.style.cursor = 'pointer';
+  mainEl.addEventListener('click', () => {
+    let val = cur;
+    if (val === '0' || val === 'Error') return;
+    navigator.clipboard.writeText(val).then(() => {
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+    }).catch(() => {});
+  });
+
+  // ── Keyboard ──────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (e.key >= '0' && e.key <= '9') pressDigit(e.key);
+    else if (e.key === '.')                 pressDot();
+    else if (e.key === '+')                 pressOp('+');
+    else if (e.key === '-')                 pressOp('-');
+    else if (e.key === '*')                 pressOp('*');
+    else if (e.key === '/') { e.preventDefault(); pressOp('/'); }
+    else if (e.key === 'Enter' || e.key === '=') pressEquals();
+    else if (e.key === 'Backspace')         delLast();
+    else if (e.key === 'Escape')            clearAll();
+    else if (e.key === '%')                 doPct();
+  });
+
+  // ── Init ──────────────────────────────────────────
+  render();
 </script>
+
 </body>
 </html>
